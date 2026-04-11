@@ -22,7 +22,7 @@ st.markdown("""
         border: 1px solid #334155;
         border-left: 5px solid #38BDF8; 
         margin-bottom: 20px; 
-        height: 320px; /* Increased height for better readability */
+        height: 340px; /* Adjusted for better spacing */
         display: flex;
         flex-direction: column;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -46,13 +46,9 @@ st.markdown("""
         font-size: 18px; 
         font-weight: 700; 
         color: #F8FAFC; 
-        line-height: 1.3; 
-        display: -webkit-box;
-        -webkit-line-clamp: 2; /* Max 2 lines for title */
-        -webkit-box-orient: vertical;
-        overflow: hidden;
+        line-height: 1.2;
     }
-    
+
     .rating-badge { 
         background-color: #F59E0B; 
         color: #FFFFFF; 
@@ -64,27 +60,29 @@ st.markdown("""
     }
     
     .hotel-location { 
-        color: #94A3B8; 
+        color: #38BDF8 !important; /* Sky Blue for high visibility */
         font-size: 13px; 
+        font-weight: 500;
         margin-bottom: 12px; 
+        display: block;
         white-space: nowrap; 
         overflow: hidden; 
-        text-overflow: ellipsis; 
+        text-overflow: ellipsis;
     }
     
     .hotel-desc { 
-        font-size: 13px; 
+        font-size: 13.5px; 
         line-height: 1.5; 
         color: #CBD5E1; 
-        flex-grow: 1; /* Pushes the amenities down */
-        overflow: hidden; /* Absolutely prevents text from bleeding out */
+        flex-grow: 1; /* Pushes amenities to the bottom */
+        overflow: hidden; 
         margin-bottom: 10px;
     }
     
     .hotel-facilities-wrapper {
-        margin-top: 15px;
+        margin-top: auto; /* Locks to bottom */
         padding-top: 12px;
-        border-top: 1px solid #334155; /* Subtle divider line */
+        border-top: 1px solid #334155; 
     }
     
     .hotel-facilities { 
@@ -136,10 +134,9 @@ with st.spinner("Initializing AI Core and loading dataset..."):
     if not df.empty:
         index = build_index(model, df['Search_Text'].tolist())
 
-# --- PRESENTATION TABS ---
+# --- UI CONTENT ---
 st.title("🌍 Semantic Hotel Search Engine")
 
-# Create 3 tabs for the presentation
 tab1, tab2, tab3 = st.tabs(["🏨 AI Search Agent", "📊 Internal Dataset", "💻 API Simulation"])
 
 # ==========================================
@@ -147,7 +144,7 @@ tab1, tab2, tab3 = st.tabs(["🏨 AI Search Agent", "📊 Internal Dataset", "�
 # ==========================================
 with tab1:
     st.markdown("Describe your ideal stay, and our NLP engine will find the perfect semantic match.")
-    query = st.text_input("What kind of stay are you looking for?", placeholder="e.g., A quiet boutique hotel with a pool in Goa India")
+    query = st.text_input("What kind of stay are you looking for?", placeholder="e.g., A quiet boutique hotel with a pool in Spain")
 
     if query and not df.empty:
         query_vector = model.encode([query])
@@ -156,6 +153,7 @@ with tab1:
         distances, indices = index.search(query_vector, k=len(df))
         results_df = df.iloc[indices[0]].copy()
         
+        # Location Filtering Logic
         query_lower = query.lower()
         all_countries = [str(c).strip() for c in df['countyName'].unique() if str(c).strip()]
         detected_countries = [c for c in all_countries if re.search(rf"\b{re.escape(c.lower())}\b", query_lower)]
@@ -170,24 +168,24 @@ with tab1:
             results_df = results_df[results_df['cityName'].astype(str).str.contains('|'.join(detected_cities), case=False, na=False)]
             st.info(f"🏙️ Auto-detected City filter: **{', '.join(detected_cities)}**")
 
-        # Increased to 12 to fill a 4-row by 3-column grid
         top_matches = results_df.head(12) 
         
         if top_matches.empty:
              st.warning("No hotels found matching that specific location. Try adjusting your search!")
         else:
             st.markdown("### ✨ Top Recommendations")
-            
-            # Create the 3-column grid
             cols = st.columns(3)
             
             for index, (_, hotel) in enumerate(top_matches.iterrows()):
                 col = cols[index % 3] 
                 
                 with col:
-                    # Let CSS handle the truncation perfectly
+                    # Data Sanitization
                     h_name = str(hotel['HotelName'])
-                    h_desc = str(hotel['Description'])
+                    # Remove hidden newlines and truncate for UI stability
+                    raw_desc = str(hotel['Description']).replace('\n', ' ').replace('\r', ' ').strip()
+                    h_desc = raw_desc[:180] + "..." if len(raw_desc) > 180 else raw_desc
+                    
                     h_fac = str(hotel['HotelFacilities'])
                     h_rating = str(hotel.get('HotelRating', 'N/A'))
                     h_loc = f"{hotel.get('Address', 'Unknown')}, {hotel['cityName']}"
@@ -207,39 +205,21 @@ with tab1:
                     """, unsafe_allow_html=True)
 
 # ==========================================
-# TAB 2: DATASET EXPLORER
+# TAB 2 & 3 Logic
 # ==========================================
 with tab2:
-    st.markdown("### 📊 Live Pandas DataFrame")
-    st.markdown("This tab is for the engineering panel. It shows the raw dataset we are processing in memory.")
     st.metric(label="Total Hotels in Active Memory", value=f"{len(df):,}")
-    
-    # Let the panel see the data, filterable and scrollable
-    # Check which columns actually exist in the CSV before trying to display them
-    desired_columns = ['HotelName', 'cityName', 'countyName', 'HotelRating', 'price']
-    available_columns = [col for col in desired_columns if col in df.columns]
-
-    # Display only the columns that exist
+    available_columns = [col for col in ['HotelName', 'cityName', 'countyName', 'HotelRating'] if col in df.columns]
     st.dataframe(df[available_columns].head(100), use_container_width=True)
-    
-# ==========================================
-# TAB 3: API SIMULATOR
-# ==========================================
+
 with tab3:
-    st.markdown("### 💻 B2B API Response")
-    st.markdown("If a third-party booking site integrates our system, they will bypass the UI and receive this raw JSON response generated by our NLP engine.")
-    
     if query:
-        # Show exactly what the API would return based on the current search
         api_response = {
             "status": "success",
             "search_query": query,
-            "filters_applied": {
-                "countries": detected_countries,
-                "cities": detected_cities
-            },
-            "results": top_matches[['HotelName', 'cityName', 'countyName', 'Description']].to_dict(orient="records")
+            "filters": {"countries": detected_countries, "cities": detected_cities},
+            "results": top_matches[['HotelName', 'cityName', 'countyName']].to_dict(orient="records")
         }
         st.json(api_response)
     else:
-        st.info("Run a search in the 'AI Search Agent' tab to generate a simulated API response.")
+        st.info("Run a search to see the simulated API payload.")
